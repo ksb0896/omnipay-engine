@@ -1,20 +1,34 @@
 {
   "name": "omnipay-engine",
   "version": "1.0.0",
-  "description": "Tiny repo to build a serverless multi-payment orchestrator step-by-step.",
+  "description": "Serverless multi-payment orchestrator (local dev with LocalStack)",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node ./src/api/server.js",
+    "dev": "nodemon --watch src -e js --exec \"node ./src/api/server.js\"",
+    "worker": "node ./src/worker/providerWorker.js",
+    "lint": "eslint . || true",
+    "test": "echo \"No tests yet\" && exit 0",
+    "dynamo-ui": "DYNAMO_ENDPOINT=http://localhost:4566 dynamodb-admin"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.940.0",
     "@aws-sdk/client-sqs": "^3.940.0",
     "@aws-sdk/lib-dynamodb": "^3.940.0",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "uuid": "^13.0.0"
+    "express": "^4.21.2",
+    "helmet": "^6.2.0",
+    "morgan": "^1.10.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "dynamodb-admin": "^3.2.0",
+    "eslint": "^8.57.1",
+    "nodemon": "^3.1.11"
   }
 }

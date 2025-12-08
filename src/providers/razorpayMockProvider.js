@@ -1,16 +1,12 @@
-// src/providers/RazorpayMockProvider.js
-
-class RazorpayMockProvider {
+export default class RazorpayMockProvider {
     constructor() {
       this.name = "razorpay_mock";
     }
   
     async charge(transaction) {
-      // Simulated network delay
       await new Promise(r => setTimeout(r, 150 + Math.random() * 250));
   
-      // 80% success rate
-      const success = Math.random() < 0.8;
+      const success = Math.random() < 0.8; // 80% success
   
       if (success) {
         return {
@@ -25,6 +21,4 @@ class RazorpayMockProvider {
       };
     }
   }
-  
-  module.exports = RazorpayMockProvider;
   

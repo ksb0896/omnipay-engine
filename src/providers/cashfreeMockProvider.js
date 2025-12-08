@@ -1,16 +1,12 @@
-// src/providers/CashfreeMockProvider.js
-
-class CashfreeMockProvider {
+export default class CashfreeMockProvider {
     constructor() {
       this.name = "cashfree_mock";
     }
   
     async charge(transaction) {
-      // Simulated network delay (Cashfree a bit faster)
-      await new Promise(r => setTimeout(r, 120 + Math.random() * 200));
+      await new Promise(r => setTimeout(r, 180 + Math.random() * 300));
   
-      // 75% success rate
-      const success = Math.random() < 0.75;
+      const success = Math.random() < 0.75; // 75% success
   
       if (success) {
         return {
@@ -25,6 +21,4 @@ class CashfreeMockProvider {
       };
     }
   }
-  
-  module.exports = CashfreeMockProvider;
   

@@ -1,15 +1,16 @@
 // src/worker/providerWorker.js
-require('dotenv').config();
+import dotenv from "dotenv";
+dotenv.config();
 
-const { getItem, updateItem } = require('../lib/dynamoClient');
-const { getProvider } = require('../providers/index');
+import { getItem, updateItem } from "../lib/dynamoClient.js";
+import { getProvider } from "../providers/index.js";
 
-const {
+import {
   SQSClient,
   ReceiveMessageCommand,
   DeleteMessageCommand,
   SendMessageCommand
-} = require('@aws-sdk/client-sqs');
+} from "@aws-sdk/client-sqs";
 
 const AWS_ENDPOINT = process.env.AWS_ENDPOINT || "http://localhost:4566";
 const AWS_REGION = process.env.AWS_REGION || "us-east-1";
@@ -19,16 +20,17 @@ const TRAN_TABLE = process.env.TRAN_TABLE || "Transactions";
 const POLL_WAIT_SECONDS = Number(process.env.POLL_WAIT_SECONDS || 5);
 const MAX_RETRIES = Number(process.env.MAX_RETRIES || 3);
 
+// SQS Client
 const sqs = new SQSClient({
   region: AWS_REGION,
   endpoint: AWS_ENDPOINT,
   credentials: { accessKeyId: "test", secretAccessKey: "test" }
 });
 
-/** -----------------------------------------------------
+/* -----------------------------------------------------
  * processMessage
  * ----------------------------------------------------- */
-async function processMessage(msg) {
+export async function processMessage(msg) {
   try {
     const body = JSON.parse(msg.Body);
     const { transactionId } = body;
@@ -45,8 +47,9 @@ async function processMessage(msg) {
 
     const attempts = (txn.attempts || 0) + 1;
 
-    // Get provider adapter
+    // Choose provider
     const provider = getProvider(txn);
+    console.log(`[WORKER] Using provider: ${provider.name} for txn: ${transactionId}`);
 
     // Call provider API
     const response = await provider.charge(txn);
@@ -64,17 +67,16 @@ async function processMessage(msg) {
       return;
     }
 
-    // Failure handling
+    // Failure Handling
     console.warn(`[WORKER] Provider failed (attempt ${attempts}) for txn:`, transactionId);
 
-    // update attempt count
     await updateItem(TRAN_TABLE, { transactionId }, {
       attempts,
       lastError: response.error,
       updatedAt: new Date().toISOString()
     });
 
-    // If too many retries -> FAIL permanently
+    // Too many retries → mark FAILED
     if (attempts >= MAX_RETRIES) {
       await updateItem(TRAN_TABLE, { transactionId }, {
         status: "FAILED",
@@ -95,7 +97,7 @@ async function processMessage(msg) {
   }
 }
 
-/** Delete message from SQS */
+/* Delete message from SQS */
 async function deleteMessage(msg) {
   await sqs.send(new DeleteMessageCommand({
     QueueUrl: SQS_QUEUE_URL,
@@ -103,7 +105,7 @@ async function deleteMessage(msg) {
   }));
 }
 
-/** Requeue same message for retry */
+/* Requeue same message for retry */
 async function requeueMessage(body) {
   await sqs.send(new SendMessageCommand({
     QueueUrl: SQS_QUEUE_URL,
@@ -111,10 +113,10 @@ async function requeueMessage(body) {
   }));
 }
 
-/** -----------------------------------------------------
+/* -----------------------------------------------------
  * Poll Loop
  * ----------------------------------------------------- */
-async function pollLoop() {
+export async function pollLoop() {
   if (!SQS_QUEUE_URL) {
     console.error("SQS_QUEUE_URL missing in .env");
     process.exit(1);
@@ -145,11 +147,10 @@ async function pollLoop() {
   }
 }
 
-if (require.main === module) {
+/* Run directly via: npm run worker */
+if (import.meta.url === `file://${process.argv[1]}`) {
   pollLoop().catch(err => {
     console.error("Worker crashed:", err);
     process.exit(1);
   });
 }
-
-module.exports = { pollLoop, processMessage };

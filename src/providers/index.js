@@ -1,32 +1,21 @@
-// src/providers/index.js
+import MockProvider from "./mockProvider.js";
+import RazorpayMockProvider from "./razorpayMockProvider.js";
+import CashfreeMockProvider from "./cashfreeMockProvider.js";
 
-const MockProvider = require("./mockProvider");
-const RazorpayMockProvider = require("./razorpayMockProvider");
-const CashfreeMockProvider = require("./cashfreeMockProvider");
+// Instantiate providers once (singleton)
+const providers = [
+  new MockProvider(),
+  new RazorpayMockProvider(),
+  new CashfreeMockProvider()
+];
 
-// Create provider instances
-const mockProvider = new MockProvider();
-const razorpayProvider = new RazorpayMockProvider();
-const cashfreeProvider = new CashfreeMockProvider();
+// Simple round-robin routing
+let index = 0;
 
-/**
- * getProvider(transaction)
- *
- * Routing logic examples:
- *  - based on merchant ID
- *  - based on transaction amount
- *  - provider failover logic
- *  - round-robin or weighted routing
- */
-function getProvider(transaction) {
-  const merchant = transaction.clientId;
+export function getProvider(transaction) {
+  const provider = providers[index];
+  index = (index + 1) % providers.length;
 
-  // Example merchant-based routing:
-  if (merchant === "merchant-razorpay") return razorpayProvider;
-  if (merchant === "merchant-cashfree") return cashfreeProvider;
-
-  // Default fallback provider
-  return mockProvider;
+  console.log(`[PROVIDER] Selected: ${provider.name}`);
+  return provider;
 }
-
-module.exports = { getProvider };

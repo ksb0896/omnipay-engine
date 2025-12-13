@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      SERVICES: "dynamodb,sqs,s3"
+      DEFAULT_REGION: "us-east-1"
+      DATA_DIR: "/var/lib/localstack"   # ensures persistence
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - ./init:/init:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/health"]
+      interval: 5s
+      retries: 20
+
+  init-resources:
+    image: amazon/aws-cli:latest
+    container_name: omnipay-init
+    depends_on:
+      - localstack
+    entrypoint: ["/bin/sh", "/init/create_resources.sh"]
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT: http://localstack:4566
+      TRAN_TABLE: Transactions
+      IDEM_TABLE: Idempotency
+      SQS_NAME: provider-queue
+    volumes:
+      - ./init:/init:ro
+      - localstack-data:/var/lib/localstack
+    restart: "no"
+
+volumes:
+  localstack-data:

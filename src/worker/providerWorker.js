@@ -15,6 +15,7 @@ import {
 const AWS_ENDPOINT = process.env.AWS_ENDPOINT || "http://localhost:4566";
 const AWS_REGION = process.env.AWS_REGION || "us-east-1";
 const SQS_QUEUE_URL = process.env.SQS_QUEUE_URL;
+const DLQ_QUEUE_URL = process.env.DLQ_QUEUE_URL;
 const TRAN_TABLE = process.env.TRAN_TABLE || "Transactions";
 
 const POLL_WAIT_SECONDS = Number(process.env.POLL_WAIT_SECONDS || 5);
@@ -78,15 +79,24 @@ export async function processMessage(msg) {
 
     // Too many retries → mark FAILED
     if (attempts >= MAX_RETRIES) {
-      await updateItem(TRAN_TABLE, { transactionId }, {
-        status: "FAILED",
-        updatedAt: new Date().toISOString()
-      });
-
-      console.warn("[WORKER] Marked FAILED:", transactionId);
-      await deleteMessage(msg);
-      return;
-    }
+        await updateItem(TRAN_TABLE, { transactionId }, {
+          status: "FAILED",
+          attempts,
+          updatedAt: new Date().toISOString()
+        });
+      
+        console.warn("[WORKER] Max retries reached, sending to DLQ:", transactionId);
+      
+        try {
+          await sendToDLQ(body, response.error, attempts);
+          await deleteMessage(msg);
+        } catch (err) {
+          console.error("[DLQ] Failed to send message, keeping original message", err);
+        }
+      
+        return;
+      }
+      
 
     // Requeue for retry
     await requeueMessage(body);
@@ -112,6 +122,26 @@ async function requeueMessage(body) {
     MessageBody: JSON.stringify(body)
   }));
 }
+
+/* Send message to Dead Letter Queue */
+async function sendToDLQ(body, reason, attempts) {
+    if (!DLQ_QUEUE_URL) {
+      throw new Error("DLQ_QUEUE_URL not configured");
+    }
+  
+    await sqs.send(new SendMessageCommand({
+      QueueUrl: DLQ_QUEUE_URL,
+      MessageBody: JSON.stringify({
+        ...body,
+        attempts,
+        failureReason: reason,
+        failedAt: new Date().toISOString()
+      })
+    }));
+  
+    console.warn("[DLQ] Message sent to DLQ:", body.transactionId);
+  }
+  
 
 /* -----------------------------------------------------
  * Poll Loop

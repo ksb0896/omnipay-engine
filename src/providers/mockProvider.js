@@ -1,24 +1,38 @@
+import { simulateWebhook } from "../utils/webhookSimulator.js";
+
 export default class MockProvider {
   constructor() {
-    this.name = "mock_provider";
+    this.name = "mock";
   }
 
   async charge(transaction) {
-    // Simulate network delay
-    await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
-
-    const success = Math.random() < 0.7; // 70% success rate
-
-    if (success) {
+    // Forced failure (DLQ / retry testing)
+    if (transaction.metadata?.forceFail === true) {
       return {
-        success: true,
-        providerRef: `MOCK-${Math.floor(Math.random() * 100000)}`
+        initiated: false,
+        error: "forced-failure-for-dlq-test"
       };
     }
 
+    // Simulate API latency
+    await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
+
+    const providerRef = `MOCK-${Math.floor(Math.random() * 100000)}`;
+
+    // Provider decides final outcome internally
+    const success = Math.random() < 0.7;
+    const webhookPayload = {
+      transactionId: transaction.transactionId,
+      provider: this.name,
+      providerRef,
+      finalStatus: success ? "SUCCESS" : "FAILED",
+      failureReason: success ? null : "mock-provider-decline"
+    }
+    //simulateWebhook(webhookPayload);
     return {
-      success: false,
-      error: "mock-provider-failure"
+      initiated: true,
+      providerRef,
+      webhookPayload
     };
   }
 }

@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Serverless multi-provider payment orchestration engine with AWS SQS, DynamoDB, and pluggable provider adapters.",
   "type": "module",
-
   "scripts": {
     "start": "node ./src/api/server.js",
     "dev": "nodemon --watch src -e js --exec \"node ./src/api/server.js\"",
@@ -12,10 +11,8 @@
     "test": "echo \"No tests yet\" && exit 0",
     "dynamo-ui": "DYNAMO_ENDPOINT=http://localhost:4566 dynamodb-admin"
   },
-
   "author": "Aryan Shaw",
   "license": "MIT",
-
   "keywords": [
     "payments",
     "serverless",
@@ -30,11 +27,9 @@
     "idempotency",
     "retry-logic"
   ],
-
   "engines": {
     "node": ">=18"
   },
-
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.940.0",
     "@aws-sdk/client-sqs": "^3.940.0",
@@ -44,9 +39,9 @@
     "express": "^4.21.2",
     "helmet": "^6.2.0",
     "morgan": "^1.10.1",
+    "node-fetch": "^3.3.2",
     "uuid": "^9.0.1"
   },
-
   "devDependencies": {
     "dynamodb-admin": "^3.2.0",
     "eslint": "^8.57.1",

@@ -4,20 +4,28 @@ export default class RazorpayMockProvider {
     }
   
     async charge(transaction) {
-      await new Promise(r => setTimeout(r, 150 + Math.random() * 250));
-  
-      const success = Math.random() < 0.8; // 80% success
-  
-      if (success) {
+      if (transaction.metadata?.forceFail === true) {
         return {
-          success: true,
-          providerRef: `RAZORPAY-${Math.floor(Math.random() * 100000)}`
+          initiated: false,
+          error: "forced-failure-for-dlq-test"
         };
       }
   
+      await new Promise(r => setTimeout(r, 150 + Math.random() * 250));
+  
+      const providerRef = `RAZORPAY-${Math.floor(Math.random() * 100000)}`;
+      const success = Math.random() < 0.8;
+  
       return {
-        success: false,
-        error: "razorpay-mock-failure"
+        initiated: true,
+        providerRef,
+        webhookPayload: {
+          transactionId: transaction.transactionId,
+          provider: this.name,
+          providerRef,
+          finalStatus: success ? "SUCCESS" : "FAILED",
+          failureReason: success ? null : "razorpay-mock-decline"
+        }
       };
     }
   }

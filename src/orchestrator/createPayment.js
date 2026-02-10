@@ -61,6 +61,7 @@ export async function createPayment(payload) {
     status: "PENDING",
     attempts: 0,
     metadata,
+    idempotencyKey: idempotencyKey || null, // Store for worker to update Idempotency table later
     createdAt: now,
     updatedAt: now
   };

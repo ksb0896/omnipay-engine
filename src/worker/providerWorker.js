@@ -3,7 +3,12 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import { getItem, updateItem } from "../lib/dynamoClient.js";
-import { getProvider } from "../providers/index.js";
+import { simulateWebhook } from "../utils/webhookSimulator.js";
+import {
+  getProvider,
+  reportProviderSuccess,
+  reportProviderFailure
+} from "../providers/index.js";
 
 import {
   SQSClient,
@@ -12,6 +17,7 @@ import {
   SendMessageCommand
 } from "@aws-sdk/client-sqs";
 
+/* ------------------ Config ------------------ */
 const AWS_ENDPOINT = process.env.AWS_ENDPOINT || "http://localhost:4566";
 const AWS_REGION = process.env.AWS_REGION || "us-east-1";
 const SQS_QUEUE_URL = process.env.SQS_QUEUE_URL;
@@ -33,7 +39,7 @@ const PROVIDER_BACKOFF_PROFILES = {
   mock_provider: { multiplier: 1.8, jitterFactor: 0.25 } // Standard
 };
 
-// SQS Client
+/* ------------------ SQS Client ------------------ */
 const sqs = new SQSClient({
   region: AWS_REGION,
   endpoint: AWS_ENDPOINT,
@@ -50,22 +56,34 @@ export async function processMessage(msg) {
 
     console.log("[WORKER] Processing txn:", transactionId);
 
-    // Load DB record
     const txn = await getItem(TRAN_TABLE, { transactionId });
     if (!txn) {
-      console.warn("[WORKER] Transaction not found, deleting message:", transactionId);
+      console.warn("[WORKER] Transaction not found, deleting message");
       await deleteMessage(msg);
       return;
     }
 
+    /* Calculate NEXT attempt */
     const attempts = (txn.attempts || 0) + 1;
 
-    // Choose provider
-    const provider = getProvider(txn);
-    console.log(`[WORKER] Using provider: ${provider.name} for txn: ${transactionId}`);
+    const txnWithAttempts = {
+      ...txn,
+      attempts
+    };
 
-    // Call provider API
-    const response = await provider.charge(txn);
+    /* Choose provider */
+    const provider = getProvider(txnWithAttempts);
+    if (!provider) {
+      console.error("[WORKER] No healthy providers available");
+      await sendToDLQ(body, "NO_HEALTHY_PROVIDER", attempts);
+      await deleteMessage(msg);
+      return;
+    }
+
+    console.log(`[WORKER] Using provider: ${provider.name}`);
+
+    /* Call provider */
+    const response = await provider.charge(txnWithAttempts);
 
     if (response.success) {
       // Update both Transactions and Idempotency tables in parallel
@@ -87,16 +105,19 @@ export async function processMessage(msg) {
       return;
     }
 
-    // Failure Handling
-    console.warn(`[WORKER] Provider failed (attempt ${attempts}) for txn:`, transactionId);
+  
+
+   /* ---------------- INITIATION FAILURE ---------------- */
+    console.warn(`[WORKER] Provider initiation failed (attempt ${attempts})`);
+
+    reportProviderFailure(provider.name);
 
     await updateItem(TRAN_TABLE, { transactionId }, {
-      attempts,
-      lastError: response.error,
-      updatedAt: new Date().toISOString()
+    attempts,
+    lastError: response.error,
+    updatedAt: new Date().toISOString()
     });
 
-    // Too many retries → mark FAILED
     if (attempts >= MAX_RETRIES) {
         // Update both Transactions and Idempotency tables in parallel
         await updateTransactionWithIdempotency(
@@ -130,11 +151,12 @@ export async function processMessage(msg) {
     await deleteMessage(msg);
 
   } catch (err) {
-    console.error("[WORKER] Error processing message:", err);
+    console.error("[WORKER] Fatal error:", err);
   }
 }
 
-/* Delete message from SQS */
+/* ------------------ Helpers ------------------ */
+
 async function deleteMessage(msg) {
   await sqs.send(new DeleteMessageCommand({
     QueueUrl: SQS_QUEUE_URL,
@@ -236,29 +258,25 @@ async function requeueMessage(body, attemptNumber = 1, providerName = null) {
   }));
 }
 
-/* Send message to Dead Letter Queue */
 async function sendToDLQ(body, reason, attempts) {
-    if (!DLQ_QUEUE_URL) {
-      throw new Error("DLQ_QUEUE_URL not configured");
-    }
-  
-    await sqs.send(new SendMessageCommand({
-      QueueUrl: DLQ_QUEUE_URL,
-      MessageBody: JSON.stringify({
-        ...body,
-        attempts,
-        failureReason: reason,
-        failedAt: new Date().toISOString()
-      })
-    }));
-  
-    console.warn("[DLQ] Message sent to DLQ:", body.transactionId);
+  if (!DLQ_QUEUE_URL) {
+    throw new Error("DLQ_QUEUE_URL not configured");
   }
-  
 
-/* -----------------------------------------------------
- * Poll Loop
- * ----------------------------------------------------- */
+  await sqs.send(new SendMessageCommand({
+    QueueUrl: DLQ_QUEUE_URL,
+    MessageBody: JSON.stringify({
+      ...body,
+      attempts,
+      failureReason: reason,
+      failedAt: new Date().toISOString()
+    })
+  }));
+
+  console.warn("[DLQ] Sent to DLQ:", body.transactionId);
+}
+
+/* ------------------ Poll Loop ------------------ */
 export async function pollLoop() {
   if (!SQS_QUEUE_URL) {
     console.error("SQS_QUEUE_URL missing in .env");
@@ -297,7 +315,7 @@ export async function pollLoop() {
   }
 }
 
-/* Run directly via: npm run worker */
+/* Run directly */
 if (import.meta.url === `file://${process.argv[1]}`) {
   pollLoop().catch(err => {
     console.error("Worker crashed:", err);

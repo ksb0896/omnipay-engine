@@ -8,6 +8,8 @@ import helmet from 'helmet';
 import cors from 'cors';
 
 import paymentsRouter from './routes/payments.js';
+import dlqRouter from './routes/dlq.js';
+import webHookRouter from './routes/webhook.js';
 
 const app = express();
 
@@ -18,6 +20,8 @@ app.use(morgan('combined'));
 
 // Routes
 app.use('/payments', paymentsRouter);
+app.use('/dlq', dlqRouter);
+app.use('/webhook', webHookRouter);
 
 // Error handler
 app.use((err, req, res, next) => {
